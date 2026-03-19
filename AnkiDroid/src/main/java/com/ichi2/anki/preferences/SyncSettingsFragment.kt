@@ -51,6 +51,7 @@ class SyncSettingsFragment : SettingsFragment() {
         // TODO: add 'reset to default' functionality
         requirePreference<NumberRangePreferenceCompat>(R.string.sync_io_timeout_secs_key).apply {
             title = TR.preferencesNetworkTimeout()
+            dialogTitle = TR.preferencesNetworkTimeout()
             summaryProvider =
                 Preference.SummaryProvider<EditTextPreference> {
                     runCatchingWithReport("network_timeout") {

@@ -22,7 +22,11 @@ import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.TextView
+import androidx.annotation.PluralsRes
+import androidx.core.content.withStyledAttributes
 import androidx.core.widget.doAfterTextChanged
+import com.ichi2.anki.CollectionManager.TR
 import com.ichi2.anki.R
 import com.ichi2.anki.databinding.DialogIncrementerPreferenceBinding
 import com.ichi2.utils.moveCursorToEnd
@@ -38,21 +42,48 @@ class IncrementerNumberRangePreferenceCompat :
         attrs: AttributeSet?,
         defStyleAttr: Int,
         defStyleRes: Int,
-    ) : super(context, attrs, defStyleAttr, defStyleRes)
+    ) : super(context, attrs, defStyleAttr, defStyleRes) {
+        initUnitPlural(context, attrs)
+    }
 
     @Suppress("unused")
-    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
+        initUnitPlural(context, attrs)
+    }
 
     @Suppress("unused")
-    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
+        initUnitPlural(context, attrs)
+    }
 
     @Suppress("unused")
-    constructor(context: Context) : super(context)
+    constructor(context: Context) : super(context) {
+        initUnitPlural(context, null)
+    }
+
+    @PluralsRes
+    var unitPluralResId: Int? = null
+        private set
+
+    private fun initUnitPlural(
+        context: Context,
+        attrs: AttributeSet?,
+    ) {
+        context.withStyledAttributes(attrs, R.styleable.IncrementerNumberRangePreferenceCompat) {
+            val resId = getResourceId(R.styleable.IncrementerNumberRangePreferenceCompat_unitPlural, 0)
+            unitPluralResId = resId.takeIf { it != 0 }
+        }
+    }
 
     class IncrementerNumberRangeDialogFragmentCompat : NumberRangeDialogFragmentCompat() {
         private var bindingRef: DialogIncrementerPreferenceBinding? = null
         private val binding get() = bindingRef!!
+        private val incrementerPreference get() = preference as IncrementerNumberRangePreferenceCompat
         private var lastValidEntry = 0
+        private var suffixTextViewBaseTranslationY: Float? = null
+
+        private val unitPluralResId: Int?
+            get() = incrementerPreference.unitPluralResId
 
         // Reference to the system OK button
         private var positiveButton: Button? = null
@@ -66,22 +97,64 @@ class IncrementerNumberRangePreferenceCompat :
             lastValidEntry =
                 try {
                     editText.text.toString().toInt()
-                } catch (nfe: NumberFormatException) {
+                } catch (_: NumberFormatException) {
                     // This should not be possible but just in case, recover with a valid minimum from superclass
                     numberRangePreference.min
                 }
 
             // Validate the final value, not individual character changes
-            editText.doAfterTextChanged { updateButtonState() }
+            editText.doAfterTextChanged {
+                updateButtonState()
+                updateSuffixText()
+                alignSuffixTextToEditTextBottom()
+            }
+
+            updateSuffixText()
+            alignSuffixTextToEditTextBottom()
 
             // Initial check to set correct button states on open
             updateButtonState()
         }
 
+        private fun updateSuffixText() {
+            val resId = unitPluralResId ?: return
+            val value = editText.text?.toString()?.toIntOrNull()
+            // Default to singular
+            val quantity = value ?: 1
+            binding.textInputLayout.suffixText = resources.getQuantityString(resId, quantity)
+        }
+
+        private fun alignSuffixTextToEditTextBottom() {
+            val suffixView =
+                binding.textInputLayout.findViewById<TextView>(com.google.android.material.R.id.textinput_suffix_text)
+                    ?: return
+
+            if (suffixTextViewBaseTranslationY == null) {
+                suffixTextViewBaseTranslationY = suffixView.translationY
+            }
+            val baseTranslationY = suffixTextViewBaseTranslationY ?: 0f
+
+            binding.textInputLayout.post {
+                val edit = editText
+                if (edit.layout == null || suffixView.layout == null) {
+                    return@post
+                }
+
+                val editFm = edit.paint.fontMetrics
+                val editTextBottomY = edit.baseline + editFm.descent
+
+                val suffixFm = suffixView.paint.fontMetrics
+                val suffixBottomY = suffixView.baseline + suffixFm.descent
+
+                suffixView.translationY = baseTranslationY + (editTextBottomY - suffixBottomY)
+            }
+        }
+
         override fun onStart() {
             super.onStart()
             positiveButton = (dialog as? androidx.appcompat.app.AlertDialog)?.positiveButton
-            positiveButton?.setText(R.string.save)
+            positiveButton?.text = TR.actionsSave()
+
             // Rerun validation now that we have the OK button reference
             updateButtonState()
         }
@@ -109,7 +182,7 @@ class IncrementerNumberRangePreferenceCompat :
             var value: Int =
                 try {
                     editText.text.toString().toInt()
-                } catch (e: NumberFormatException) {
+                } catch (_: NumberFormatException) {
                     // If the user entered a non-number then incremented, restore to a good value
                     lastValidEntry
                 }
@@ -127,6 +200,7 @@ class IncrementerNumberRangePreferenceCompat :
             super.onDestroyView()
             bindingRef = null
             positiveButton = null
+            suffixTextViewBaseTranslationY = null
         }
 
         /**
